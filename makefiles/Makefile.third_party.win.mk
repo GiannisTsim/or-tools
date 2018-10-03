@@ -16,6 +16,8 @@ WINDOWS_PROTOBUF_DIR ?= $(OR_ROOT)dependencies/install
 WINDOWS_PROTOBUF_PATH = $(subst /,$S,$(WINDOWS_PROTOBUF_DIR))
 WINDOWS_CCTZ_DIR ?= $(OR_ROOT)dependencies/install
 WINDOWS_CCTZ_PATH = $(subst /,$S,$(WINDOWS_CCTZ_DIR))
+WINDOWS_ABSL_DIR ?= $(OR_ROOT)dependencies/install
+WINDOWS_ABSL_PATH = $(subst /,$S,$(WINDOWS_ABSL_DIR))
 WINDOWS_CBC_DIR ?= $(OR_ROOT)dependencies/install
 WINDOWS_CBC_PATH = $(subst /,$S,$(WINDOWS_CBC_DIR))
 WINDOWS_CGL_DIR ?= $(WINDOWS_CBC_DIR)
@@ -39,6 +41,7 @@ GFLAGS_TAG = 2.2.1
 GLOG_TAG = 0.3.5
 PROTOBUF_TAG = 3.6.1
 CCTZ_TAG = master
+ABSL_TAG = master
 CBC_TAG = 2.9.9
 CGL_TAG = 0.59.10
 CLP_TAG = 1.16.11
@@ -131,6 +134,7 @@ build_third_party: \
  install_gflags \
  install_glog \
  install_protobuf \
+ install_absl \
  install_swig \
  install_coin_cbc
 
@@ -370,6 +374,62 @@ STATIC_CCTZ_LNK = "$(WINDOWS_CCTZ_PATH)\\lib\\cctz.lib"
 CCTZ_LNK = $(STATIC_CCTZ_LNK)
 DEPENDENCIES_LNK += $(CCTZ_LNK)
 
+##################
+##  ABSEIL-CPP  ##
+##################
+# This uses abseil-cpp cmake-based build.
+.PHONY: install_absl
+install_absl: dependencies/install/lib/absl.lib
+
+dependencies/install/lib/absl.lib: dependencies/sources/abseil-cpp-$(ABSL_TAG) | dependencies/install
+	cd dependencies\sources\abseil-cpp-$(ABSL_TAG) && \
+  $(SET_COMPILER) "$(CMAKE)" -H. -Bbuild_cmake \
+    -DCMAKE_PREFIX_PATH="$(OR_TOOLS_TOP)/dependencies/install" \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DCMAKE_CXX_FLAGS="$(MAC_VERSION)" \
+    -DBUILD_TESTING=OFF \
+    -DCMAKE_INSTALL_PREFIX=..\..\install \
+		-G "NMake Makefiles" && \
+  "$(CMAKE)" --build build_cmake && \
+  "$(CMAKE)" --build build_cmake --target install
+
+dependencies/sources/abseil-cpp-$(ABSL_TAG): | dependencies/sources
+	-$(DELREC) dependencies/sources/abseil-cpp-$(ABSL_TAG)
+	git clone --quiet -b $(ABSL_TAG) https://github.com/abseil/abseil-cpp.git dependencies\sources\abseil-cpp-$(ABSL_TAG)
+	cd dependencies\sources\abseil-cpp-$(ABSL_TAG) \
+ && git apply "$(OR_TOOLS_TOP)\patches\abseil-cpp-$(ABSL_TAG).patch"
+	$(COPY) patches\absl-config.cmake	dependencies\sources\abseil-cpp-$(ABSL_TAG)\CMake
+
+ABSL_INC = /I"$(WINDOWS_ABSL_PATH)\\include"
+ABSL_SWIG = -I"$(WINDOWS_ABSL_PATH)/include"
+STATIC_ABSL_LNK = \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_bad_any_cast.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_bad_optional_access .lib"\
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_base.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_container.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_dynamic_annotations.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_examine_stack.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_failure_signal_handler.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_hash.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_int128.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_leak_check.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_malloc_internal.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_optional.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_spinlock_wait.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_stack_consumption.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_stacktrace.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_strings.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_symbolize.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_synchronization.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_throw_delegate.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_time.lib" \
+ "$(WINDOWS_ABSL_PATH)\\lib\\absl_variant.lib"
+DYNAMIC_ABSL_LNK = $(STATIC_ABSL_LNK)
+
+ABSL_LNK = $(STATIC_ABSL_LNK)
+DEPENDENCIES_LNK += $(ABSL_LNK)
+
 ############
 ##  COIN  ##
 ############
@@ -511,6 +571,7 @@ clean_third_party: remove_readonly_svn_attribs
 	-$(DELREC) dependencies\sources\glog*
 	-$(DELREC) dependencies\sources\protobuf*
 	-$(DELREC) dependencies\sources\cctz*
+	-$(DELREC) dependencies\sources\abseil-cpp*
 	-$(DELREC) dependencies\sources\Cbc-*
 	-$(DELREC) dependencies\sources\google*
 	-$(DELREC) dependencies\sources\glpk*

@@ -10,6 +10,7 @@ UNIX_GLOG_DIR ?= $(OR_TOOLS_TOP)/dependencies/install
 UNIX_PROTOBUF_DIR ?= $(OR_TOOLS_TOP)/dependencies/install
 UNIX_PROTOC_BINARY ?= $(UNIX_PROTOBUF_DIR)/bin/protoc
 UNIX_CCTZ_DIR ?= $(OR_TOOLS_TOP)/dependencies/install
+UNIX_ABSL_DIR ?= $(OR_TOOLS_TOP)/dependencies/install
 UNIX_CBC_DIR ?= $(OR_TOOLS_TOP)/dependencies/install
 UNIX_CGL_DIR ?= $(UNIX_CBC_DIR)
 UNIX_CLP_DIR ?= $(UNIX_CBC_DIR)
@@ -23,6 +24,7 @@ GFLAGS_TAG = 2.2.1
 GLOG_TAG = 0.3.5
 PROTOBUF_TAG = 3.6.1
 CCTZ_TAG = master
+ABSL_TAG = master
 CBC_TAG = 2.9.9
 CGL_TAG = 0.59.10
 CLP_TAG = 1.16.11
@@ -57,6 +59,11 @@ ifeq ($(wildcard $(PROTOC_BINARY)),)
 	$(error Cannot find $(UNIX_PROTOC_BINARY). Please verify UNIX_PROTOC_BINARY)
 else
 	$(info PROTOC: found)
+endif
+ifeq ($(wildcard $(UNIX_ABSL_DIR)/include/absl/base/config.h),)
+	$(error Third party Abseil-cpp files was not found! did you run 'make third_party' or set UNIX_ABSL_DIR ?)
+else
+	$(info ABSEIL-CPP: found)
 endif
 ifeq ($(wildcard $(UNIX_COINUTILS_DIR)/include/coinutils/coin/CoinModel.hpp $(UNIX_COINUTILS_DIR)/include/coin/CoinModel.hpp),)
 	$(error Third party CoinUtils files was not found! did you run 'make third_party' or set UNIX_COINUTILS_DIR ?)
@@ -112,7 +119,7 @@ build_third_party: \
  build_gflags \
  build_glog \
  build_protobuf \
- build_cctz \
+ build_absl \
  build_cbc
 
 .PHONY: archives_directory
@@ -359,6 +366,61 @@ DYNAMIC_CCTZ_LNK = -L$(UNIX_CCTZ_DIR)/lib -lcctz
 CCTZ_LNK = $(DYNAMIC_CCTZ_LNK)
 DEPENDENCIES_LNK += $(CCTZ_LNK)
 OR_TOOLS_LNK += $(CCTZ_LNK)
+
+##################
+##  ABSEIL-CPP  ##
+##################
+# This uses abseil-cpp cmake-based build.
+build_absl: dependencies/install/lib/libabsl.$L
+
+dependencies/install/lib/libabsl.$L: dependencies/sources/abseil-cpp-$(ABSL_TAG) | dependencies/install
+	cd dependencies/sources/abseil-cpp-$(ABSL_TAG) && \
+  $(SET_COMPILER) $(CMAKE) -H. -Bbuild_cmake \
+    -DCMAKE_PREFIX_PATH="$(OR_TOOLS_TOP)/dependencies/install" \
+    -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DCMAKE_CXX_FLAGS="$(MAC_VERSION)" \
+    -DBUILD_TESTING=OFF \
+    -DCMAKE_INSTALL_PREFIX=../../install && \
+  $(CMAKE) --build build_cmake -- -j4 && \
+  $(CMAKE) --build build_cmake --target install
+
+dependencies/sources/abseil-cpp-$(ABSL_TAG): | dependencies/sources
+	-$(DELREC) dependencies/sources/abseil-cpp-$(ABSL_TAG)
+	git clone --quiet -b $(ABSL_TAG) https://github.com/abseil/abseil-cpp.git dependencies/sources/abseil-cpp-$(ABSL_TAG)
+	cd dependencies/sources/abseil-cpp-$(ABSL_TAG) && \
+ git apply "$(OR_TOOLS_TOP)/patches/abseil-cpp-$(ABSL_TAG).patch"
+	$(COPY) patches/absl-config.cmake	dependencies/sources/abseil-cpp-$(ABSL_TAG)/CMake
+
+ABSL_INC = -I$(UNIX_ABSL_DIR)/include
+ABSL_SWIG = $(ABSL_INC)
+STATIC_ABSL_LNK = $(UNIX_ABSL_DIR)/lib/libabsl.a
+DYNAMIC_ABSL_LNK = -L$(UNIX_ABSL_DIR)/lib \
+-labsl_bad_any_cast \
+-labsl_bad_optional_access \
+-labsl_base \
+-labsl_container \
+-labsl_dynamic_annotations \
+-labsl_examine_stack \
+-labsl_failure_signal_handler \
+-labsl_hash \
+-labsl_int128 \
+-labsl_leak_check \
+-labsl_malloc_internal \
+-labsl_optional \
+-labsl_spinlock_wait \
+-labsl_stack_consumption \
+-labsl_stacktrace \
+-labsl_strings \
+-labsl_symbolize \
+-labsl_synchronization \
+-labsl_throw_delegate \
+-labsl_time \
+-labsl_variant
+
+ABSL_LNK = $(DYNAMIC_ABSL_LNK)
+DEPENDENCIES_LNK += $(ABSL_LNK)
+OR_TOOLS_LNK += $(ABSL_LNK)
 
 ############################################
 ##  Install Patchelf on linux platforms.  ##
@@ -710,6 +772,7 @@ clean_third_party:
 	-$(DELREC) dependencies/sources/protobuf*
 	-$(DELREC) dependencies/sources/google*
 	-$(DELREC) dependencies/sources/cctz*
+	-$(DELREC) dependencies/sources/abseil-cpp*
 	-$(DELREC) dependencies/sources/Cbc*
 	-$(DELREC) dependencies/sources/Cgl*
 	-$(DELREC) dependencies/sources/Clp*
